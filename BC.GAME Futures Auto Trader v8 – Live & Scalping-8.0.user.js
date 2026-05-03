@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         BC.GAME Futures Auto Trader v8 – Live & Scalping
+// @name         BC.GAME Futures Auto Trader v8.1 – Live Analysis Fix
 // @namespace    http://tampermonkey.net/
-// @version      8.0
-// @description  Phân tích live, sửa lỗi Long/Short, tổng lãi/lỗ, live status, chiến lược rủi ro cao
+// @version      8.1
+// @description  Tab Phân tích tự động live 5s, sửa lỗi Long/Short, tổng lãi/lỗ, Scalping
 // @author       Souninjinma
 // @match        https://bcmail2.com/vi/trading/contract*
 // @grant        GM_addStyle
@@ -49,14 +49,14 @@
         position: fixed; top: 60px; right: 20px; z-index: 99999;
         background: #1e293b; color: #e2e8f0; border-radius: 12px;
         font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px;
-        width: 380px; box-shadow: 0 8px 30px rgba(0,0,0,0.7);
+        width: 390px; box-shadow: 0 8px 30px rgba(0,0,0,0.7);
     ">
         <div id="bc-v8-header" style="
             display: flex; justify-content: space-between; align-items: center;
             padding: 12px 15px; background: #0f172a; border-radius: 12px 12px 0 0;
             cursor: move;
         ">
-            <span style="font-weight: bold; color: #38bdf8;">🤖 Trader v8 (Live)</span>
+            <span style="font-weight: bold; color: #38bdf8;">🤖 Trader v8.1 (Live)</span>
             <span id="bc-v8-toggle" style="cursor: pointer; font-size: 18px;">−</span>
         </div>
         <div id="bc-v8-body" style="padding: 12px 15px;">
@@ -74,6 +74,10 @@
                 <div style="margin-bottom: 8px;">
                     <label style="font-size: 11px; color: #94a3b8;">Số dư ví</label>
                     <div style="font-size:14px; font-weight:bold; color:#38bdf8;" id="bc-v8-balance">--</div>
+                </div>
+                <div style="margin-bottom: 8px;">
+                    <label style="font-size: 11px; color: #94a3b8;">Tổng lãi/lỗ (ước tính)</label>
+                    <div style="font-size:14px; font-weight:bold;" id="bc-v8-total-pnl">--</div>
                 </div>
                 <div style="margin-bottom: 8px;">
                     <label style="font-size: 11px; color: #94a3b8;">Cặp giao dịch</label>
@@ -113,7 +117,7 @@
                         <option value="bb" ${settings.strategy === 'bb' ? 'selected' : ''}>Bollinger</option>
                         <option value="macd" ${settings.strategy === 'macd' ? 'selected' : ''}>MACD</option>
                         <option value="combined" ${settings.strategy === 'combined' ? 'selected' : ''}>Tổng hợp</option>
-                        <option value="scalping" ${settings.strategy === 'scalping' ? 'selected' : ''}>Scalping (Rủi ro cao)</option>
+                        <option value="scalping" ${settings.strategy === 'scalping' ? 'selected' : ''}>Scalping (RR cao)</option>
                     </select>
                 </div>
                 <div style="margin-top: 4px; font-size: 10px; color: #94a3b8;" id="bc-v8-live-status">Sẵn sàng</div>
@@ -167,7 +171,7 @@
                 <button id="bc-v8-refresh-analysis" style="width:100%; margin-top:8px; background:#334155; border:none; color:white; padding:6px; border-radius:4px; font-size:11px;">🔄 Phân tích lại</button>
             </div>
 
-            <!-- TAB HƯỚNG DẪN -->
+            <!-- TAB HƯỚNG DẪN (đầy đủ) -->
             <div id="bc-v8-tab-guide" class="bc-v8-tab-content" style="display:none;">
                 <div style="max-height: 400px; overflow-y: auto; padding-right:5px;">
                     <h3 style="color:#38bdf8; margin-top:0;">📖 Hướng dẫn chiến lược giao dịch</h3>
@@ -304,6 +308,7 @@
     const statusDiv = document.getElementById('bc-v8-status');
     const liveStatusDiv = document.getElementById('bc-v8-live-status');
     const balanceSpan = document.getElementById('bc-v8-balance');
+    const totalPnlSpan = document.getElementById('bc-v8-total-pnl');
     const panel = document.getElementById('bc-v8-panel');
 
     amountInput.value = formatVND(settings.amountVND);
@@ -749,7 +754,27 @@
         if (analysisLiveInterval) { clearInterval(analysisLiveInterval); analysisLiveInterval = null; }
     }
 
-    document.querySelector('[data-tab="analysis"]').addEventListener('click', startAnalysisLive);
+    // Luôn chạy live khi tab Analysis đang active, dùng MutationObserver hoặc biến trạng thái
+    let currentTab = 'trade';
+    document.querySelectorAll('#bc-v8-panel .bc-v8-menu-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#bc-v8-panel .bc-v8-menu-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const tabId = btn.dataset.tab;
+            document.querySelectorAll('#bc-v8-panel .bc-v8-tab-content').forEach(c => c.style.display = 'none');
+            document.getElementById(`bc-v8-tab-${tabId}`).style.display = 'block';
+            currentTab = tabId;
+            if (tabId === 'analysis') {
+                startAnalysisLive();
+            } else {
+                stopAnalysisLive();
+            }
+            if (tabId === 'history') renderHistory();
+        });
+    });
+
+    // Nếu tab Analysis đang mở khi mới load? Mặc định là trade nên không cần.
+    // Nút refresh vẫn hoạt động
     document.getElementById('bc-v8-refresh-analysis').addEventListener('click', runFullAnalysis);
 
     // ---------- AUTO TRADE ----------
@@ -817,8 +842,51 @@
             }
         }
     }
-    setInterval(updateBalance, 5000);
+
+    function getInitialBalance() {
+        let initial = GM_getValue('bc_v8_initial_balance', null);
+        if (initial === null) {
+            const vndImg = document.querySelector('img[src*="VND.rect"]');
+            if (vndImg) {
+                const container = vndImg.closest('.flex.flex-auto');
+                if (container) {
+                    const amountEl = container.querySelector('.font-extrabold');
+                    if (amountEl) {
+                        const balanceText = amountEl.textContent.replace(/[^0-9]/g, '');
+                        initial = parseInt(balanceText);
+                        GM_setValue('bc_v8_initial_balance', initial);
+                    }
+                }
+            }
+        }
+        return initial;
+    }
+
+    function updateTotalPnL() {
+        const currentBalanceText = balanceSpan.textContent.replace(/[^0-9]/g, '');
+        const currentBalance = parseInt(currentBalanceText);
+        const initialBalance = getInitialBalance();
+        if (!isNaN(currentBalance) && initialBalance !== null && !isNaN(initialBalance)) {
+            const pnl = currentBalance - initialBalance;
+            const formatted = pnl >= 0 ? `+${formatVND(Math.abs(pnl))}` : `-${formatVND(Math.abs(pnl))}`;
+            totalPnlSpan.textContent = `${formatted} ₫`;
+            totalPnlSpan.style.color = pnl >= 0 ? '#10b981' : '#ef4444';
+        } else {
+            totalPnlSpan.textContent = '--';
+            totalPnlSpan.style.color = '#94a3b8';
+        }
+    }
+
+    setInterval(() => {
+        updateBalance();
+        updateTotalPnL();
+    }, 5000);
     updateBalance();
+    updateTotalPnL();
+    setTimeout(() => {
+        getInitialBalance();
+        updateTotalPnL();
+    }, 3000);
 
     // ---------- LƯU CÀI ĐẶT ----------
     function saveSettings() {
@@ -834,20 +902,6 @@
     [amountInput, leverageInput, tpInput, slInput, autoCheck, strategySelect, symbolSelect].forEach(el => {
         el.addEventListener('change', saveSettings);
         el.addEventListener('input', saveSettings);
-    });
-
-    // ---------- MENU ----------
-    document.querySelectorAll('#bc-v8-panel .bc-v8-menu-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('#bc-v8-panel .bc-v8-menu-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            const tabId = btn.dataset.tab;
-            document.querySelectorAll('#bc-v8-panel .bc-v8-tab-content').forEach(c => c.style.display = 'none');
-            document.getElementById(`bc-v8-tab-${tabId}`).style.display = 'block';
-            if (tabId === 'analysis') startAnalysisLive();
-            else stopAnalysisLive();
-            if (tabId === 'history') renderHistory();
-        });
     });
 
     // ---------- KÉO PANEL ----------
