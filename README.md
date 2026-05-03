@@ -89,7 +89,7 @@ Script hoạt động trực tiếp trên trang `https://bcmail2.com/vi/trading/
 
 ### 📞 Hỗ Trợ
 
-Nếu bạn có câu hỏi hoặc cần trợ giúp, vui lòng mở một issue trên GitHub hoặc liên hệ qua Telegram: **@your_telegram**.
+Nếu bạn có câu hỏi hoặc cần trợ giúp, vui lòng mở một issue trên GitHub hoặc liên hệ qua Discord : **@souninjinma**.
 
 ---
 
@@ -166,7 +166,7 @@ The script runs directly on `https://bcmail2.com/vi/trading/contract` via Tamper
 
 ### 📞 Support
 
-If you have questions or need assistance, please open a GitHub issue or contact us via Telegram: **@your_telegram**.
+If you have questions or need assistance, please open a GitHub issue or contact us via Discord: @Souninjinma.
 
 ---
 
